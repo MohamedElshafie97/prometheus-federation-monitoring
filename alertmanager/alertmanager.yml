@@ -1,0 +1,105 @@
+# Alertmanager - receives everything from the global Prometheus.
+#
+# Routing in short:
+#   production + critical  -> Google Chat (prod space) + email to on-call
+#   production + warning   -> Google Chat (prod space)
+#   staging / dev          -> Google Chat (non-prod space), batched longer
+#   Watchdog               -> dispatcher heartbeat endpoint
+#
+# Google Chat has no native Alertmanager integration, so chat messages go
+# through the alert dispatcher (see dispatcher/), which formats them and
+# threads firing/resolved notifications for the same group together.
+
+global:
+  resolve_timeout: 5m
+  smtp_smarthost: smtp.example.com:587
+  smtp_from: alertmanager@example.com
+  smtp_auth_username: alertmanager@example.com
+  smtp_auth_password_file: /etc/alertmanager/smtp_password
+  smtp_require_tls: true
+
+templates:
+  - /etc/alertmanager/templates/*.tmpl
+
+route:
+  receiver: chat-nonprod
+  group_by: [env, alertname]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+  routes:
+    - matchers: [alertname="Watchdog"]
+      receiver: heartbeat
+      group_wait: 0s
+      group_interval: 1m
+      repeat_interval: 1m
+
+    - matchers: [env="production", severity="critical"]
+      receiver: prod-critical
+      group_wait: 10s
+      repeat_interval: 1h
+
+    - matchers: [env="production"]
+      receiver: chat-prod
+
+    - matchers: [env=~"staging|dev"]
+      receiver: chat-nonprod
+      group_wait: 2m
+      repeat_interval: 12h
+
+inhibit_rules:
+  # Host is down: don't also page for everything running on it.
+  - source_matchers: [alertname="HostDown"]
+    target_matchers: [alertname!="HostDown"]
+    equal: [env, instance]
+
+  # Lost the whole environment: the per-host alerts from it are meaningless.
+  - source_matchers: [alertname=~"FederationTargetDown|EnvironmentNoData"]
+    target_matchers: [alertname!~"FederationTargetDown|EnvironmentNoData|Watchdog"]
+    equal: [env]
+
+  # Critical already firing for the same thing: drop the warning.
+  - source_matchers: [severity="critical"]
+    target_matchers: [severity="warning"]
+    equal: [env, alertname, instance]
+
+  # Disk critical covers disk low.
+  - source_matchers: [alertname="HostDiskSpaceCritical"]
+    target_matchers: [alertname=~"HostDiskSpaceLow|HostDiskWillFillIn4Hours"]
+    equal: [env, instance, mountpoint]
+
+  # Replication stopped covers replication lag.
+  - source_matchers: [alertname="MySQLReplicationStopped"]
+    target_matchers: [alertname=~"MySQLReplicationLag.*"]
+    equal: [env, instance]
+
+receivers:
+  - name: prod-critical
+    webhook_configs:
+      - url: http://127.0.0.1:9095/alert?space=prod-alerts
+        send_resolved: true
+        max_alerts: 20
+    email_configs:
+      - to: oncall@example.com
+        send_resolved: true
+        headers:
+          Subject: '{{ template "email.subject" . }}'
+        html: '{{ template "email.html" . }}'
+
+  - name: chat-prod
+    webhook_configs:
+      - url: http://127.0.0.1:9095/alert?space=prod-alerts
+        send_resolved: true
+        max_alerts: 20
+
+  - name: chat-nonprod
+    webhook_configs:
+      - url: http://127.0.0.1:9095/alert?space=nonprod-alerts
+        send_resolved: true
+        max_alerts: 20
+
+  - name: heartbeat
+    webhook_configs:
+      - url: http://127.0.0.1:9095/heartbeat
+        send_resolved: false

@@ -1,0 +1,35 @@
+{{ define "email.subject" -}}
+[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.env }} - {{ .CommonLabels.alertname }}
+{{- end }}
+
+{{ define "email.html" -}}
+<html>
+<body style="font-family: Segoe UI, Arial, sans-serif; font-size: 14px; color: #222;">
+  <p>
+    <b>{{ .CommonLabels.alertname }}</b> in <b>{{ .CommonLabels.env }}</b> -
+    {{ if eq .Status "firing" }}<span style="color:#c62828;">FIRING</span>{{ else }}<span style="color:#2e7d32;">RESOLVED</span>{{ end }}
+  </p>
+
+  <table cellpadding="6" cellspacing="0" style="border-collapse: collapse; border: 1px solid #ddd;">
+    <tr style="background:#f5f5f5;">
+      <th align="left">Instance</th>
+      <th align="left">Summary</th>
+      <th align="left">Since</th>
+    </tr>
+    {{ range .Alerts }}
+    <tr style="border-top: 1px solid #ddd;">
+      <td>{{ .Labels.instance }}</td>
+      <td>
+        {{ .Annotations.summary }}
+        {{ if .Annotations.description }}<br><span style="color:#555;">{{ .Annotations.description }}</span>{{ end }}
+      </td>
+      <td>{{ .StartsAt.Format "2006-01-02 15:04" }}</td>
+    </tr>
+    {{ end }}
+  </table>
+
+  {{ with .CommonAnnotations.runbook }}<p>Runbook: {{ . }}</p>{{ end }}
+  <p style="color:#888; font-size: 12px;">Silence or view in Alertmanager: {{ .ExternalURL }}</p>
+</body>
+</html>
+{{- end }}
