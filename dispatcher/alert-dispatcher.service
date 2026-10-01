@@ -1,0 +1,19 @@
+[Unit]
+Description=Alertmanager to Google Chat alert dispatcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=alert-dispatcher
+Group=alert-dispatcher
+ExecStart=/usr/bin/python3 /opt/alert-dispatcher/alert_dispatcher.py --config /etc/alert-dispatcher/dispatcher.ini
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
