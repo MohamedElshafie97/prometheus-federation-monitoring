@@ -1,0 +1,76 @@
+# Recording rules evaluated on every environment Prometheus.
+#
+# The global server only federates series whose name contains a colon
+# (i.e. recording rules) plus `up`. Anything an alert needs has to be
+# pre-computed here, which keeps federation cheap: a few hundred series
+# per environment instead of every raw metric.
+
+groups:
+  - name: node.recording
+    rules:
+      - record: instance:node_cpu_utilisation:ratio_rate5m
+        expr: 1 - avg without (cpu, mode) (rate(node_cpu_seconds_total{mode="idle"}[5m]))
+
+      - record: instance:node_memory_utilisation:ratio
+        expr: 1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)
+
+      - record: instance:node_load1_per_cpu:ratio
+        expr: |
+          node_load1
+            / on (instance, job) group_left
+          count without (cpu, mode) (node_cpu_seconds_total{mode="idle"})
+
+      - record: instance:node_filesystem_avail:ratio
+        expr: |
+          node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|nsfs"}
+            /
+          node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs|nsfs"}
+
+      # Free bytes 4h from now, extrapolated from the last 6h
+      - record: instance:node_filesystem_avail_bytes:predict_linear4h
+        expr: predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|nsfs"}[6h], 4 * 3600)
+
+      - record: instance:node_network_errors:rate5m
+        expr: |
+          sum without (device) (
+            rate(node_network_receive_errs_total{device!~"lo|veth.*|docker.*|br-.*"}[5m])
+            + rate(node_network_transmit_errs_total{device!~"lo|veth.*|docker.*|br-.*"}[5m])
+          )
+
+      - record: instance:node_systemd_unit_failed:count
+        expr: count without (name, state, type) (node_systemd_unit_state{state="failed"} == 1)
+
+  - name: mysql.recording
+    rules:
+      - record: instance:mysql_up:bool
+        expr: mysql_up
+
+      - record: instance:mysql_replica_lag:seconds
+        expr: mysql_slave_status_seconds_behind_master
+
+      - record: instance:mysql_replica_io_running:bool
+        expr: mysql_slave_status_slave_io_running
+
+      - record: instance:mysql_replica_sql_running:bool
+        expr: mysql_slave_status_slave_sql_running
+
+      - record: instance:mysql_connections:ratio
+        expr: mysql_global_status_threads_connected / mysql_global_variables_max_connections
+
+      - record: instance:mysql_slow_queries:rate5m
+        expr: rate(mysql_global_status_slow_queries[5m])
+
+  - name: container.recording
+    rules:
+      - record: container:last_seen:age_seconds
+        expr: time() - container_last_seen{name!=""}
+
+      - record: container:cpu_usage:rate5m
+        expr: sum by (instance, name) (rate(container_cpu_usage_seconds_total{name!=""}[5m]))
+
+      # Only containers that actually have a memory limit set
+      - record: container:memory_working_set:ratio_limit
+        expr: |
+          sum by (instance, name) (container_memory_working_set_bytes{name!=""})
+            /
+          sum by (instance, name) (container_spec_memory_limit_bytes{name!=""} > 0)

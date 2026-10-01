@@ -1,0 +1,3 @@
+- targets:
+    - docker-prod01:8080
+    - docker-prod02:8080

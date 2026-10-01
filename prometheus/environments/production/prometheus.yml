@@ -1,0 +1,39 @@
+# Prometheus for the production environment.
+# Scrapes everything in production and pre-computes the recording rules
+# that the global server federates. No alerting here: alerts are evaluated
+# centrally so there is one place to silence, route and audit them.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    env: production
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: node
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/node.yml"]
+        refresh_interval: 1m
+
+  - job_name: mysql
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/mysql.yml"]
+        refresh_interval: 1m
+
+  - job_name: cadvisor
+    scrape_interval: 30s
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/cadvisor.yml"]
+        refresh_interval: 1m
+    metric_relabel_configs:
+      # cAdvisor exposes a lot of per-cgroup noise; keep named containers only
+      - source_labels: [name]
+        regex: ""
+        action: drop

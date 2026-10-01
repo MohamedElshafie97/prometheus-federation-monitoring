@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.venv/
+*.retry
+dispatcher/dispatcher.ini
+ansible/inventory/group_vars/*/vault.yml

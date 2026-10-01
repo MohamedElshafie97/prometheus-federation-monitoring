@@ -1,0 +1,6 @@
+- targets: [app-stg01:9100, app-stg02:9100]
+  labels: {role: app}
+- targets: [db-stg01:9100, db-stg02:9100]
+  labels: {role: db}
+- targets: [docker-stg01:9100]
+  labels: {role: docker}

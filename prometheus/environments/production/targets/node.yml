@@ -1,0 +1,18 @@
+# file_sd targets, reloaded every minute without restarting Prometheus.
+- targets:
+    - app-prod01:9100
+    - app-prod02:9100
+    - app-prod03:9100
+  labels:
+    role: app
+- targets:
+    - db-prod01:9100
+    - db-prod02:9100
+    - db-dr01:9100
+  labels:
+    role: db
+- targets:
+    - docker-prod01:9100
+    - docker-prod02:9100
+  labels:
+    role: docker

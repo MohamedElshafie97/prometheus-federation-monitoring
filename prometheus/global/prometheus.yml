@@ -1,0 +1,82 @@
+# Global Prometheus.
+#
+# Pulls pre-aggregated series from every environment Prometheus through
+# /federate, evaluates all alert rules, and is the default Grafana
+# datasource. It never scrapes exporters directly.
+
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+  external_labels:
+    tier: global
+
+rule_files:
+  - /etc/prometheus/rules/alerts/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager01:9093"]
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: alertmanager
+    static_configs:
+      - targets: ["alertmanager01:9093"]
+
+  - job_name: alert-dispatcher
+    static_configs:
+      - targets: ["alertmanager01:9095"]
+
+  # One federation job per environment, so `up{job="federate-production"}`
+  # tells us immediately which environment we've lost sight of.
+  - job_name: federate-production
+    honor_labels: true          # keep env/instance/job from the source
+    metrics_path: /federate
+    scrape_interval: 30s
+    scrape_timeout: 25s
+    params:
+      "match[]":
+        - '{__name__=~".+:.+"}'   # recording rules only
+        - '{__name__="up"}'
+    static_configs:
+      - targets:
+          - prom-prod01:9090      # VMs, databases, docker hosts
+          - k8s-prod-lb:30090     # in-cluster Prometheus (kube-prometheus-stack NodePort)
+        labels:
+          env: production
+
+  - job_name: federate-staging
+    honor_labels: true
+    metrics_path: /federate
+    scrape_interval: 30s
+    scrape_timeout: 25s
+    params:
+      "match[]":
+        - '{__name__=~".+:.+"}'
+        - '{__name__="up"}'
+    static_configs:
+      - targets:
+          - prom-stg01:9090
+          - k8s-stg-lb:30090
+        labels:
+          env: staging
+
+  - job_name: federate-dev
+    honor_labels: true
+    metrics_path: /federate
+    scrape_interval: 60s
+    scrape_timeout: 50s
+    params:
+      "match[]":
+        - '{__name__=~".+:.+"}'
+        - '{__name__="up"}'
+    static_configs:
+      - targets:
+          - prom-dev01:9090
+          - k8s-dev-lb:30090
+        labels:
+          env: dev

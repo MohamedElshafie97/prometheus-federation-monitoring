@@ -1,0 +1,4 @@
+- targets: [db-stg01:9104]
+  labels: {mysql_role: primary}
+- targets: [db-stg02:9104]
+  labels: {mysql_role: replica}

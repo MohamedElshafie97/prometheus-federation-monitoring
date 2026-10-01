@@ -1,0 +1,9 @@
+- targets:
+    - db-prod01:9104
+  labels:
+    mysql_role: primary
+- targets:
+    - db-prod02:9104
+    - db-dr01:9104
+  labels:
+    mysql_role: replica
