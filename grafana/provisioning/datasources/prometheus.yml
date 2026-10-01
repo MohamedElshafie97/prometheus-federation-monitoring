@@ -1,0 +1,42 @@
+# Provisioned datasources. Global is the default and has every environment;
+# the per-environment ones are there for drilling into raw metrics that
+# aren't federated (anything without a colon in its name).
+apiVersion: 1
+
+datasources:
+  - name: Prometheus (global)
+    uid: prom-global
+    type: prometheus
+    access: proxy
+    url: http://prom-global01:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 30s
+
+  - name: Prometheus (production)
+    uid: prom-production
+    type: prometheus
+    access: proxy
+    url: http://prom-prod01:9090
+    jsonData:
+      timeInterval: 15s
+
+  - name: Prometheus (staging)
+    uid: prom-staging
+    type: prometheus
+    access: proxy
+    url: http://prom-stg01:9090
+
+  - name: Prometheus (dev)
+    uid: prom-dev
+    type: prometheus
+    access: proxy
+    url: http://prom-dev01:9090
+
+  - name: Alertmanager
+    uid: alertmanager
+    type: alertmanager
+    access: proxy
+    url: http://alertmanager01:9093
+    jsonData:
+      implementation: prometheus

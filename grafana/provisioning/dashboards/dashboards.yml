@@ -1,0 +1,10 @@
+apiVersion: 1
+
+providers:
+  - name: monitoring-platform
+    folder: Platform
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false     # change dashboards in git, not in the UI
+    options:
+      path: /var/lib/grafana/dashboards/platform
