@@ -1,0 +1,54 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  monitoring-config:
+    runs-on: ubuntu-latest
+    env:
+      PROM_VERSION: "2.54.1"
+      AM_VERSION: "0.27.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install promtool and amtool
+        run: |
+          curl -sSL https://github.com/prometheus/prometheus/releases/download/v${PROM_VERSION}/prometheus-${PROM_VERSION}.linux-amd64.tar.gz | tar xz
+          curl -sSL https://github.com/prometheus/alertmanager/releases/download/v${AM_VERSION}/alertmanager-${AM_VERSION}.linux-amd64.tar.gz | tar xz
+          sudo mv prometheus-${PROM_VERSION}.linux-amd64/promtool alertmanager-${AM_VERSION}.linux-amd64/amtool /usr/local/bin/
+
+      - name: Install python deps
+        run: pip install pyyaml yamllint
+
+      - name: yamllint
+        run: yamllint .
+
+      - name: Rules, configs, routing, dispatcher, dashboards
+        run: ./scripts/validate.sh
+
+  ansible:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ansible ansible-lint
+      - name: Syntax check
+        working-directory: ansible
+        run: ansible-playbook --syntax-check site.yml
+      - name: ansible-lint
+        run: ansible-lint ansible/
+
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck -S warning scripts/*.sh tests/alertmanager/*.sh
