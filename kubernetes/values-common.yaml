@@ -1,0 +1,61 @@
+# kube-prometheus-stack values for each cluster.
+#
+#   helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
+#     -n monitoring --create-namespace \
+#     -f kubernetes/values-common.yaml -f kubernetes/values-production.yaml
+#
+# The in-cluster Prometheus only collects and records. Alertmanager and
+# Grafana run centrally, so they're disabled here.
+
+alertmanager:
+  enabled: false
+
+grafana:
+  enabled: false
+
+# kube-prometheus-stack ships its own alert rules; we keep its recording
+# rules (useful for federation) and drop its alerts to avoid duplicates
+# with the global rule set.
+defaultRules:
+  create: true
+  disabled: {}
+  rules:
+    alertmanager: false
+    general: false
+    kubernetesApps: false
+    kubernetesResources: false
+    kubernetesStorage: false
+    kubernetesSystem: false
+    nodeExporterAlerting: false
+    prometheus: false
+    kubePrometheusNodeRecording: true
+    k8sContainerCpuUsageSecondsTotal: true
+    k8sContainerMemoryWorkingSetBytes: true
+
+prometheus:
+  service:
+    type: NodePort
+    nodePort: 30090        # global Prometheus federates from <node>:30090
+  prometheusSpec:
+    retention: 7d
+    retentionSize: 40GB
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+    # Pick up PrometheusRule / ServiceMonitor objects from every namespace,
+    # not only the ones created by this chart.
+    ruleSelectorNilUsesHelmValues: false
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 50Gi
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        memory: 4Gi

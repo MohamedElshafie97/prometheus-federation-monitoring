@@ -1,0 +1,6 @@
+prometheus:
+  prometheusSpec:
+    retention: 3d
+    externalLabels:
+      env: dev
+      cluster: k8s-dev

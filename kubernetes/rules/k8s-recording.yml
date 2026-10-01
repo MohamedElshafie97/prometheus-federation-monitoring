@@ -1,0 +1,30 @@
+# Recording rules that exist only in the clusters. Combined with the
+# node group from prometheus/rules/recording.yml by
+# scripts/build-k8s-rules.py into kubernetes/prometheusrule-federation.yaml.
+
+groups:
+  - name: kubernetes.federation
+    rules:
+      - record: cluster:kube_node_not_ready:count
+        expr: count(kube_node_status_condition{condition="Ready", status="true"} == 0) or vector(0)
+
+      - record: namespace_pod:kube_pod_container_restarts:increase1h
+        expr: sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total[1h]))
+
+      - record: namespace_pod:kube_pod_not_ready:count
+        expr: |
+          sum by (namespace, pod) (
+            kube_pod_status_phase{phase=~"Pending|Unknown|Failed"}
+          ) > 0
+
+      - record: namespace_deployment:kube_deployment_replicas_unavailable:max
+        expr: max by (namespace, deployment) (kube_deployment_status_replicas_unavailable)
+
+      - record: namespace_persistentvolumeclaim:kubelet_volume_stats_available:ratio
+        expr: |
+          max by (namespace, persistentvolumeclaim) (kubelet_volume_stats_available_bytes)
+            /
+          max by (namespace, persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes)
+
+      - record: namespace_job:kube_job_failed:count
+        expr: sum by (namespace, job_name) (kube_job_status_failed) > 0

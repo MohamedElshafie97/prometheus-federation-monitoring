@@ -1,0 +1,5 @@
+prometheus:
+  prometheusSpec:
+    externalLabels:
+      env: staging
+      cluster: k8s-stg

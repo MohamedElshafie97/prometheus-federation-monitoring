@@ -1,0 +1,5 @@
+prometheus:
+  prometheusSpec:
+    externalLabels:
+      env: production
+      cluster: k8s-prod
