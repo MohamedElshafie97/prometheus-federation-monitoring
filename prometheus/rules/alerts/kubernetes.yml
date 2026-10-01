@@ -1,0 +1,57 @@
+# Kubernetes alerts. The series come from the in-cluster Prometheus
+# (kube-prometheus-stack) via the recording rules in
+# kubernetes/prometheusrule-federation.yaml.
+
+groups:
+  - name: kubernetes
+    rules:
+      - alert: KubeNodeNotReady
+        expr: cluster:kube_node_not_ready:count > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $value }} node(s) NotReady in {{ $labels.cluster }} ({{ $labels.env }})"
+          runbook: docs/runbook.md#kubenodenotready
+
+      - alert: KubePodCrashLooping
+        expr: namespace_pod:kube_pod_container_restarts:increase1h > 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.namespace }}/{{ $labels.pod }} restarted {{ $value | printf \"%.0f\" }} times in the last hour"
+          description: "kubectl -n {{ $labels.namespace }} logs {{ $labels.pod }} --previous"
+
+      - alert: KubePodNotReady
+        expr: namespace_pod:kube_pod_not_ready:count > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.namespace }}/{{ $labels.pod }} not ready for 15 minutes"
+          description: "kubectl -n {{ $labels.namespace }} describe pod {{ $labels.pod }}"
+
+      - alert: KubeDeploymentReplicasUnavailable
+        expr: namespace_deployment:kube_deployment_replicas_unavailable:max > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.namespace }}/{{ $labels.deployment }} has {{ $value }} unavailable replica(s)"
+
+      - alert: KubePersistentVolumeFillingUp
+        expr: namespace_persistentvolumeclaim:kubelet_volume_stats_available:ratio < 0.10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} has {{ $value | humanizePercentage }} free"
+
+      - alert: KubeJobFailed
+        expr: namespace_job:kube_job_failed:count > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Job {{ $labels.namespace }}/{{ $labels.job_name }} failed"

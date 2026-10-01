@@ -1,0 +1,86 @@
+# Alerts about the monitoring system itself. If these fire, every other
+# alert for that environment is suspect, so Alertmanager inhibits them.
+
+groups:
+  - name: meta
+    rules:
+      - alert: FederationTargetDown
+        expr: up{job=~"federate-.+"} == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Global Prometheus can't federate from {{ $labels.instance }} ({{ $labels.env }})"
+          description: >-
+            No data from this environment Prometheus for 3 minutes. Alerts for
+            {{ $labels.env }} are blind until it's back. Check the host, the
+            prometheus service, and the firewall between the two.
+          runbook: docs/runbook.md#federationtargetdown
+
+      - alert: FederationScrapeSlow
+        expr: scrape_duration_seconds{job=~"federate-.+"} > 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Federating from {{ $labels.instance }} takes {{ $value | humanizeDuration }}"
+          description: >-
+            Close to the scrape timeout. Usually means too many series match the
+            federation selector. Check for a new recording rule with high
+            cardinality.
+          runbook: docs/runbook.md#federationscrapeslow
+
+      # Federation scrape succeeds but returns nothing for the environment:
+      # usually the env Prometheus lost all its own targets, or someone
+      # changed the recording rules / external_labels.
+      - alert: EnvironmentNoData
+        expr: |
+          (max by (env) (up{job=~"federate-.+"}) == 1)
+          unless on (env)
+          count by (env) (up{job!~"federate-.+"})
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Federation from {{ $labels.env }} is up but returns no target data"
+          description: Check the env Prometheus targets page and its external_labels.
+
+      - alert: PrometheusRuleEvaluationFailing
+        expr: increase(prometheus_rule_evaluation_failures_total[10m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Rule evaluation failures on {{ $labels.instance }}"
+          description: An alert rule is failing to evaluate, so it can't fire. Check the Prometheus log.
+
+      - alert: AlertmanagerNotificationsFailing
+        expr: rate(alertmanager_notifications_failed_total[5m]) > 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Alertmanager failing to send via {{ $labels.integration }}"
+          description: Alerts are firing but not reaching anyone through this channel.
+
+      - alert: AlertDispatcherErrors
+        expr: increase(dispatcher_google_chat_errors_total[10m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Alert dispatcher can't post to Google Chat"
+          description: >-
+            Alerts are reaching the dispatcher but not the chat space. Email
+            still works for production criticals. Check the webhook URL and
+            the dispatcher log (journalctl -u alert-dispatcher).
+          runbook: docs/runbook.md#alertdispatchererrors
+
+      # Always firing. If the dispatcher stops receiving it, the alerting
+      # path itself is broken.
+      - alert: Watchdog
+        expr: vector(1)
+        labels:
+          severity: none
+        annotations:
+          summary: Alerting pipeline heartbeat

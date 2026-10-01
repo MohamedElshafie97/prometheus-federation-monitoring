@@ -1,0 +1,30 @@
+# Docker hosts, scraped through cAdvisor.
+
+groups:
+  - name: containers
+    rules:
+      - alert: ContainerDown
+        expr: container:last_seen:age_seconds > 60
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container {{ $labels.name }} on {{ $labels.instance }} is gone"
+          description: cAdvisor hasn't seen it for over a minute. It exited, was removed, or is restarting in a loop.
+
+      - alert: ContainerMemoryNearLimit
+        expr: container:memory_working_set:ratio_limit > 0.90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.name }} on {{ $labels.instance }} at {{ $value | humanizePercentage }} of its memory limit"
+          description: It will be OOM-killed if it keeps growing.
+
+      - alert: ContainerHighCpu
+        expr: container:cpu_usage:rate5m > 2
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.name }} on {{ $labels.instance }} using {{ $value | printf \"%.1f\" }} cores"

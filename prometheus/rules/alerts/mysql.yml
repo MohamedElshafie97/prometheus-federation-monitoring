@@ -1,0 +1,63 @@
+groups:
+  - name: mysql
+    rules:
+      - alert: MySQLDown
+        expr: instance:mysql_up:bool == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MariaDB on {{ $labels.instance }} is not responding ({{ $labels.env }})"
+          description: mysqld_exporter is up but can't connect to the database.
+          runbook: docs/runbook.md#mysqldown
+
+      - alert: MySQLReplicationStopped
+        expr: |
+          instance:mysql_replica_io_running:bool == 0
+          or
+          instance:mysql_replica_sql_running:bool == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Replication thread stopped on {{ $labels.instance }}"
+          description: >-
+            Run SHOW SLAVE STATUS\G and check Last_IO_Error / Last_SQL_Error.
+            Do not skip transactions on a GTID replica without knowing what
+            the failed statement was.
+          runbook: docs/runbook.md#mysqlreplicationstopped
+
+      - alert: MySQLReplicationLag
+        expr: instance:mysql_replica_lag:seconds > 60
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} is {{ $value | humanizeDuration }} behind its source"
+
+      - alert: MySQLReplicationLagCritical
+        expr: instance:mysql_replica_lag:seconds > 600
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }} is {{ $value | humanizeDuration }} behind its source"
+          description: A failover now would lose this much data.
+          runbook: docs/runbook.md#mysqlreplicationstopped
+
+      - alert: MySQLConnectionsHigh
+        expr: instance:mysql_connections:ratio > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} using {{ $value | humanizePercentage }} of max_connections"
+          description: Check for connection leaks in the application before raising max_connections.
+
+      - alert: MySQLSlowQueries
+        expr: instance:mysql_slow_queries:rate5m > 1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} logging {{ $value | printf \"%.1f\" }} slow queries/s"

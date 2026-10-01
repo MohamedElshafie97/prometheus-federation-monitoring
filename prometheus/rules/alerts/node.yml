@@ -1,0 +1,88 @@
+groups:
+  - name: node
+    rules:
+      - alert: HostDown
+        expr: up{job="node"} == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }} is down ({{ $labels.env }})"
+          description: node_exporter unreachable for 3 minutes. Host is down, the exporter stopped, or the network path is broken.
+          runbook: docs/runbook.md#hostdown
+
+      - alert: HostHighCpu
+        expr: instance:node_cpu_utilisation:ratio_rate5m > 0.90
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU at {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+          description: Sustained for 15 minutes.
+
+      - alert: HostHighLoad
+        expr: instance:node_load1_per_cpu:ratio > 2
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Load is {{ $value | printf \"%.1f\" }}x the core count on {{ $labels.instance }}"
+          description: High load with normal CPU usually means processes are waiting on disk or NFS.
+
+      - alert: HostMemoryHigh
+        expr: instance:node_memory_utilisation:ratio > 0.92
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Memory at {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+
+      - alert: HostDiskSpaceLow
+        expr: instance:node_filesystem_avail:ratio < 0.15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.mountpoint }} on {{ $labels.instance }} has {{ $value | humanizePercentage }} free"
+          runbook: docs/runbook.md#hostdiskspace
+
+      - alert: HostDiskSpaceCritical
+        expr: instance:node_filesystem_avail:ratio < 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.mountpoint }} on {{ $labels.instance }} almost full ({{ $value | humanizePercentage }} free)"
+          runbook: docs/runbook.md#hostdiskspace
+
+      # Catches the "log file grows 10 GB an hour" case long before
+      # the percentage thresholds do.
+      - alert: HostDiskWillFillIn4Hours
+        expr: |
+          instance:node_filesystem_avail_bytes:predict_linear4h < 0
+          and on (env, instance, device, mountpoint)
+          instance:node_filesystem_avail:ratio < 0.40
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.mountpoint }} on {{ $labels.instance }} will fill within 4 hours at the current rate"
+          runbook: docs/runbook.md#hostdiskspace
+
+      - alert: HostNetworkErrors
+        expr: instance:node_network_errors:rate5m > 1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Network errors on {{ $labels.instance }} ({{ $value | printf \"%.1f\" }}/s)"
+          description: Usually a bad cable, a duplex mismatch or a failing NIC.
+
+      - alert: HostSystemdUnitFailed
+        expr: instance:node_systemd_unit_failed:count > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value }} failed systemd unit(s) on {{ $labels.instance }}"
+          description: "Run: systemctl --failed"
