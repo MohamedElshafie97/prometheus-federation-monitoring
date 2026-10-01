@@ -64,7 +64,8 @@ Look at `Slave_IO_Running`, `Slave_SQL_Running`, `Last_IO_Error`, `Last_SQL_Erro
 Alerts reach the dispatcher but not Google Chat. Email still works for production criticals.
 
 ```bash
-journalctl -u alert-dispatcher -n 50
+docker ps --filter name=alert-dispatcher     # running? healthy?
+docker logs --tail 50 alert-dispatcher
 curl -s localhost:9095/metrics | grep dispatcher_
 ```
 

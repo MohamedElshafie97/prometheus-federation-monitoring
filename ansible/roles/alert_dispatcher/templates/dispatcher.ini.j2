@@ -1,6 +1,7 @@
 {{ ansible_managed | comment }}
 [server]
-listen = {{ alert_dispatcher_listen }}
+# inside the container; published on 127.0.0.1 by docker
+listen = 0.0.0.0:9095
 log_level = INFO
 alertmanager_url = {{ alert_dispatcher_alertmanager_url }}
 

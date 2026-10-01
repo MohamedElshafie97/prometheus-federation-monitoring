@@ -73,7 +73,7 @@ groups:
           description: >-
             Alerts are reaching the dispatcher but not the chat space. Email
             still works for production criticals. Check the webhook URL and
-            the dispatcher log (journalctl -u alert-dispatcher).
+            the dispatcher log (docker logs alert-dispatcher).
           runbook: docs/runbook.md#alertdispatchererrors
 
       # Always firing. If the dispatcher stops receiving it, the alerting

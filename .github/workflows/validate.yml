@@ -52,3 +52,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: shellcheck -S warning scripts/*.sh tests/alertmanager/*.sh
+
+  dispatcher-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t alert-dispatcher:ci dispatcher/
+      - name: Container starts and answers /healthz
+        run: |
+          cp dispatcher/dispatcher.ini.example /tmp/dispatcher.ini
+          sed -i 's/^listen = .*/listen = 0.0.0.0:9095/' /tmp/dispatcher.ini
+          docker run -d --name d -p 9095:9095 --read-only \
+            -v /tmp/dispatcher.ini:/etc/alert-dispatcher/dispatcher.ini:ro alert-dispatcher:ci
+          for i in $(seq 1 10); do curl -fs localhost:9095/healthz && exit 0; sleep 1; done
+          docker logs d; exit 1

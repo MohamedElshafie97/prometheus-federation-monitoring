@@ -1,13 +1,14 @@
 [server]
 listen = 127.0.0.1:9095
+# In the container this is 0.0.0.0:9095, published on 127.0.0.1 by docker
 log_level = INFO
 # Shown as a "Silence / details" link in firing messages
 alertmanager_url = http://alertmanager01:9093
 
 [spaces]
 # Google Chat incoming webhooks: Space > Apps & integrations > Webhooks.
-# The URL contains a key and token - treat it like a password and keep
-# this file mode 0640 root:alert-dispatcher.
+# The URL contains a key and token - treat it like a password. Mount the
+# file read-only into the container and never bake it into the image.
 prod-alerts = https://chat.googleapis.com/v1/spaces/AAAAxxxxxxx/messages?key=REPLACE&token=REPLACE
 nonprod-alerts = https://chat.googleapis.com/v1/spaces/AAAAyyyyyyy/messages?key=REPLACE&token=REPLACE
 

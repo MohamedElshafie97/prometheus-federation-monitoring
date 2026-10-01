@@ -4,7 +4,9 @@ Centralized monitoring for three environments (dev, staging, production) built o
 
 Covers Linux servers, MariaDB (including replication to a DR site), Kubernetes clusters and standalone Docker hosts. Alerts go to Google Chat through a small dispatcher service, and production criticals also go to email.
 
-> This is the configuration I built and run at work, cleaned up for publishing. Hostnames, IPs, email addresses and webhook URLs are placeholders.
+> Based on the monitoring platform I built at work, cleaned up for publishing. Hostnames, IPs, email addresses and webhook URLs are placeholders.
+>
+> Two parts were team efforts: the Kubernetes side (kube-prometheus-stack in the clusters) was done together with the DevOps team, and the Google Chat dispatcher was an existing container someone else maintained. The dispatcher in this repo is my own rewrite of that piece so the project is complete and runnable on its own.
 
 ## Architecture
 
@@ -89,7 +91,7 @@ Inhibition rules cut the noise during real incidents:
 
 ### The dispatcher
 
-Alertmanager has no Google Chat integration, so [`dispatcher/alert_dispatcher.py`](dispatcher/alert_dispatcher.py) sits in between. It's a single Python file with no dependencies outside the standard library.
+Alertmanager has no Google Chat integration, so a small service sits in between. It runs as a container on the Alertmanager host, published on `127.0.0.1:9095` only. The code is [`dispatcher/alert_dispatcher.py`](dispatcher/alert_dispatcher.py), a single Python file with no dependencies outside the standard library, packaged by [`dispatcher/Dockerfile`](dispatcher/Dockerfile) as a non-root, read-only container with a health check.
 
 - Formats each alert group into a short readable message: severity, environment, every affected instance with its summary, runbook link, link to silence it.
 - Posts with a `threadKey` derived from Alertmanager's `groupKey`, so the FIRING message and its RESOLVED follow-up appear in the same thread.
@@ -107,7 +109,7 @@ prometheus/
   rules/recording.yml                 recording rules (run on environment servers)
   rules/alerts/*.yml                  alert rules (run on the global server)
 alertmanager/                         routing, inhibition, email template
-dispatcher/                           Google Chat dispatcher, tests, systemd unit
+dispatcher/                           Google Chat dispatcher, Dockerfile, tests
 grafana/                              provisioned datasources + overview dashboard
 kubernetes/                           kube-prometheus-stack values, PrometheusRule
 ansible/                              roles to deploy all of the above on VMs
@@ -118,10 +120,11 @@ docs/runbook.md                       what to do when each alert fires
 
 ## Deployment
 
-Everything outside Kubernetes runs directly on VMs as systemd services (no containers), deployed with Ansible:
+Prometheus, Alertmanager, Grafana and the exporters run directly on VMs as systemd services. The dispatcher runs as a container next to Alertmanager. All of it is deployed with Ansible:
 
 ```bash
 cd ansible
+ansible-galaxy collection install -r requirements.yml
 ansible-vault create inventory/group_vars/alerting/vault.yml
 #   vault_gchat_prod_webhook: https://chat.googleapis.com/v1/spaces/...
 #   vault_gchat_nonprod_webhook: ...
@@ -132,6 +135,8 @@ ansible-playbook site.yml --ask-vault-pass
 # after editing alert rules only
 ansible-playbook site.yml --tags rules
 ```
+
+The dispatcher image is built on the Alertmanager host and tagged with a hash of the script, so a code change produces a new tag and the container is replaced; a config change recreates it with the same image.
 
 The roles validate every file before it's put in place (`promtool check config`, `promtool check rules`, `amtool check-config`), so a typo never reaches a running server. Prometheus and Alertmanager are reloaded, not restarted, on config changes.
 

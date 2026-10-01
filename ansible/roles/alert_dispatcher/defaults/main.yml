@@ -1,8 +1,10 @@
 ---
-alert_dispatcher_user: alert-dispatcher
-alert_dispatcher_dir: /opt/alert-dispatcher
+alert_dispatcher_image: alert-dispatcher
+alert_dispatcher_tag: "{{ lookup('ansible.builtin.file', repo_root ~ '/dispatcher/alert_dispatcher.py') | hash('sha1') | truncate(12, True, '') }}"
+alert_dispatcher_build_dir: /opt/alert-dispatcher/build
 alert_dispatcher_config_dir: /etc/alert-dispatcher
-alert_dispatcher_listen: "127.0.0.1:9095"
+# Published on localhost only: Alertmanager runs on the same host
+alert_dispatcher_port: 9095
 alert_dispatcher_alertmanager_url: "http://{{ inventory_hostname }}:9093"
 alert_dispatcher_heartbeat_space: prod-alerts
 alert_dispatcher_max_silence: 300

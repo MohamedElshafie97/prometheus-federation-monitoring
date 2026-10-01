@@ -1,67 +1,76 @@
 ---
+# The dispatcher runs as a container on the Alertmanager host.
+# The image is built on the host from dispatcher/ and tagged with a hash
+# of the script, so a code change means a new tag and a container rebuild.
+
 - name: Refuse to deploy with empty webhook URLs
   ansible.builtin.assert:
     that: alert_dispatcher_spaces.values() | select('equalto', '') | list | length == 0
     fail_msg: "One or more Google Chat webhook URLs are empty - set them in vault"
-
-- name: Make sure python3 is present
-  ansible.builtin.package:
-    name: python3
-    state: present
-
-- name: Create service user
-  ansible.builtin.user:
-    name: "{{ alert_dispatcher_user }}"
-    system: true
-    shell: /usr/sbin/nologin
-    create_home: false
 
 - name: Create directories
   ansible.builtin.file:
     path: "{{ item.path }}"
     state: directory
     owner: root
-    group: "{{ alert_dispatcher_user }}"
+    group: root
     mode: "{{ item.mode }}"
   loop:
-    - {path: "{{ alert_dispatcher_dir }}", mode: "0755"}
-    - {path: "{{ alert_dispatcher_config_dir }}", mode: "0750"}
+    - {path: "{{ alert_dispatcher_build_dir }}", mode: "0755"}
+    - {path: "{{ alert_dispatcher_config_dir }}", mode: "0755"}
 
-- name: Install dispatcher
+- name: Copy build context
   ansible.builtin.copy:
-    src: "{{ repo_root }}/dispatcher/alert_dispatcher.py"
-    dest: "{{ alert_dispatcher_dir }}/alert_dispatcher.py"
-    mode: "0755"
-  notify: Restart alert-dispatcher
+    src: "{{ repo_root }}/dispatcher/{{ item }}"
+    dest: "{{ alert_dispatcher_build_dir }}/{{ item }}"
+    mode: "0644"
+  loop: [Dockerfile, alert_dispatcher.py]
 
+- name: Build image
+  community.docker.docker_image:
+    name: "{{ alert_dispatcher_image }}"
+    tag: "{{ alert_dispatcher_tag }}"
+    source: build
+    build:
+      path: "{{ alert_dispatcher_build_dir }}"
+
+# Readable by the container's non-root user; the directory itself stays
+# root-owned and isn't world-listable on the host beyond this file.
 - name: Write config (contains webhook secrets)
   ansible.builtin.template:
     src: dispatcher.ini.j2
     dest: "{{ alert_dispatcher_config_dir }}/dispatcher.ini"
     owner: root
-    group: "{{ alert_dispatcher_user }}"
-    mode: "0640"
-  no_log: true
-  notify: Restart alert-dispatcher
-
-- name: Install systemd unit
-  ansible.builtin.copy:
-    src: "{{ repo_root }}/dispatcher/alert-dispatcher.service"
-    dest: /etc/systemd/system/alert-dispatcher.service
+    group: root
     mode: "0644"
-  notify: Restart alert-dispatcher
+  no_log: true
+  register: alert_dispatcher_config
 
-- name: Start dispatcher
-  ansible.builtin.systemd_service:
+- name: Run container
+  community.docker.docker_container:
     name: alert-dispatcher
+    image: "{{ alert_dispatcher_image }}:{{ alert_dispatcher_tag }}"
+    restart_policy: unless-stopped
+    published_ports:
+      - "127.0.0.1:{{ alert_dispatcher_port }}:9095"
+    volumes:
+      - "{{ alert_dispatcher_config_dir }}/dispatcher.ini:/etc/alert-dispatcher/dispatcher.ini:ro"
+    read_only: true
+    log_driver: json-file
+    log_options:
+      max-size: 20m
+      max-file: "3"
+    recreate: "{{ alert_dispatcher_config is changed }}"
     state: started
-    enabled: true
-    daemon_reload: true
 
 - name: Health check
   ansible.builtin.uri:
-    url: "http://{{ alert_dispatcher_listen }}/healthz"
+    url: "http://127.0.0.1:{{ alert_dispatcher_port }}/healthz"
   register: alert_dispatcher_health
-  retries: 5
-  delay: 2
+  retries: 10
+  delay: 3
   until: alert_dispatcher_health.status == 200
+
+- name: Remove old image versions
+  ansible.builtin.command: docker image prune -a -f --filter "label=org.opencontainers.image.title=alert-dispatcher"
+  changed_when: false
