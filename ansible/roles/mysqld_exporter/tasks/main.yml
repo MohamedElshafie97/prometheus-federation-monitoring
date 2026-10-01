@@ -1,0 +1,97 @@
+---
+- name: Create exporter user
+  ansible.builtin.user:
+    name: "{{ mysqld_exporter_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+
+- name: Check installed version
+  ansible.builtin.command: /usr/local/bin/mysqld_exporter --version
+  register: mysqld_exporter_installed
+  changed_when: false
+  failed_when: false
+
+- name: Install binary
+  when: ('version ' ~ mysqld_exporter_version) not in (mysqld_exporter_installed.stdout | default('') ~ mysqld_exporter_installed.stderr | default(''))
+  block:
+    - name: Download and unpack
+      ansible.builtin.unarchive:
+        src: "{{ mysqld_exporter_url }}"
+        dest: /tmp
+        remote_src: true
+
+    - name: Copy binary
+      ansible.builtin.copy:
+        src: "/tmp/{{ mysqld_exporter_release }}/mysqld_exporter"
+        dest: /usr/local/bin/mysqld_exporter
+        remote_src: true
+        mode: "0755"
+      notify: Restart mysqld_exporter
+
+- name: Credentials file
+  ansible.builtin.copy:
+    dest: /etc/.mysqld_exporter.cnf
+    content: |
+      [client]
+      user={{ mysqld_exporter_db_user }}
+      password={{ mysqld_exporter_db_password }}
+      host=127.0.0.1
+      port=3306
+    owner: root
+    group: "{{ mysqld_exporter_user }}"
+    mode: "0640"
+  no_log: true
+  notify: Restart mysqld_exporter
+
+- name: Systemd unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/mysqld_exporter.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Prometheus MySQL/MariaDB exporter
+      After=network-online.target mariadb.service
+
+      [Service]
+      User={{ mysqld_exporter_user }}
+      ExecStart=/usr/local/bin/mysqld_exporter \
+          --config.my-cnf=/etc/.mysqld_exporter.cnf \
+          --web.listen-address={{ mysqld_exporter_listen }} \
+      {% for c in mysqld_exporter_collectors %}
+          --collect.{{ c }}{{ ' \\' if not loop.last }}
+      {% endfor %}
+      Restart=on-failure
+      NoNewPrivileges=true
+      ProtectSystem=strict
+      ProtectHome=true
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: Restart mysqld_exporter
+
+- name: Start exporter
+  ansible.builtin.systemd_service:
+    name: mysqld_exporter
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Allow scraping from the monitoring servers only (firewalld)
+  ansible.posix.firewalld:
+    rich_rule: 'rule family="ipv4" source address="{{ item }}" port port="9104" protocol="tcp" accept'
+    permanent: true
+    immediate: true
+    state: enabled
+  loop: "{{ monitoring_scrapers }}"
+  when: ansible_os_family == "RedHat"
+
+- name: Check the exporter can reach the database
+  ansible.builtin.uri:
+    url: http://127.0.0.1:9104/metrics
+    return_content: true
+  register: mysqld_exporter_metrics
+  failed_when: "'mysql_up 1' not in mysqld_exporter_metrics.content"
+  retries: 5
+  delay: 3
+  until: mysqld_exporter_metrics is not failed

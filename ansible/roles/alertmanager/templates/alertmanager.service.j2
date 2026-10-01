@@ -1,0 +1,24 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=Prometheus Alertmanager
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User={{ alertmanager_user }}
+Group={{ alertmanager_user }}
+ExecStart=/usr/local/bin/alertmanager \
+    --config.file={{ alertmanager_config_dir }}/alertmanager.yml \
+    --storage.path={{ alertmanager_data_dir }} \
+    --web.listen-address={{ alertmanager_listen }} \
+    --web.external-url={{ alertmanager_external_url }} \
+    --cluster.listen-address=
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

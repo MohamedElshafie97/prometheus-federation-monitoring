@@ -1,0 +1,49 @@
+---
+# cAdvisor runs as a plain binary under systemd rather than as a container,
+# so it keeps reporting even when the Docker daemon itself is in trouble.
+- name: Download cAdvisor
+  ansible.builtin.get_url:
+    url: "{{ cadvisor_url }}"
+    dest: /usr/local/bin/cadvisor
+    mode: "0755"
+  notify: Restart cadvisor
+
+- name: Systemd unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/cadvisor.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=cAdvisor container metrics
+      After=docker.service
+      Requires=docker.service
+
+      [Service]
+      ExecStart=/usr/local/bin/cadvisor \
+          --port={{ cadvisor_listen_port }} \
+          --docker_only=true \
+          --housekeeping_interval=15s \
+          --disable_metrics={{ cadvisor_disable_metrics }} \
+          --store_container_labels=false \
+          --whitelisted_container_labels=com.docker.compose.service,com.docker.compose.project
+      Restart=on-failure
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: Restart cadvisor
+
+- name: Start cAdvisor
+  ansible.builtin.systemd_service:
+    name: cadvisor
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Allow scraping from the monitoring servers only (firewalld)
+  ansible.posix.firewalld:
+    rich_rule: 'rule family="ipv4" source address="{{ item }}" port port="{{ cadvisor_listen_port }}" protocol="tcp" accept'
+    permanent: true
+    immediate: true
+    state: enabled
+  loop: "{{ monitoring_scrapers }}"
+  when: ansible_os_family == "RedHat"

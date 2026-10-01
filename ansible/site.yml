@@ -1,0 +1,41 @@
+---
+# Full deployment, in dependency order. Each play can be run on its own
+# with --tags, e.g. after editing alert rules:
+#   ansible-playbook site.yml --tags rules
+- name: Exporters on database hosts
+  hosts: mysql_exporters
+  roles:
+    - role: mysqld_exporter
+      tags: [exporters]
+
+- name: CAdvisor on Docker hosts
+  hosts: docker_hosts
+  roles:
+    - role: cadvisor
+      tags: [exporters]
+
+- name: Environment Prometheus servers
+  hosts: prometheus_env
+  roles:
+    - role: prometheus
+      tags: [prometheus]
+
+- name: Global Prometheus
+  hosts: prometheus_global
+  roles:
+    - role: prometheus
+      tags: [prometheus]
+
+- name: Alertmanager and dispatcher
+  hosts: alerting
+  roles:
+    - role: alertmanager
+      tags: [alertmanager]
+    - role: alert_dispatcher
+      tags: [dispatcher]
+
+- name: Grafana
+  hosts: grafana
+  roles:
+    - role: grafana
+      tags: [grafana]

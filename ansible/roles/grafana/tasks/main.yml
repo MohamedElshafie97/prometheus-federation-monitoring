@@ -1,0 +1,83 @@
+---
+- name: Grafana OSS repo (RHEL family)
+  ansible.builtin.yum_repository:
+    name: grafana
+    description: Grafana OSS
+    baseurl: https://rpm.grafana.com
+    gpgkey: https://rpm.grafana.com/gpg.key
+    gpgcheck: true
+  when: ansible_os_family == "RedHat"
+
+- name: Grafana OSS repo (Debian family)
+  when: ansible_os_family == "Debian"
+  block:
+    - name: Signing key
+      ansible.builtin.get_url:
+        url: https://apt.grafana.com/gpg.key
+        dest: /etc/apt/keyrings/grafana.asc
+        mode: "0644"
+
+    - name: Apt source
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com stable main"
+        filename: grafana
+
+- name: Install Grafana
+  ansible.builtin.package:
+    name: grafana
+    state: present
+
+- name: Basic server settings
+  community.general.ini_file:
+    path: /etc/grafana/grafana.ini
+    section: "{{ item.section }}"
+    option: "{{ item.option }}"
+    value: "{{ item.value }}"
+    mode: "0640"
+  loop:
+    - {section: server, option: root_url, value: "{{ grafana_root_url }}"}
+    - {section: analytics, option: reporting_enabled, value: "false"}
+    - {section: users, option: allow_sign_up, value: "false"}
+    - {section: auth.anonymous, option: enabled, value: "false"}
+  loop_control:
+    label: "{{ item.section }}.{{ item.option }}"
+  notify: Restart grafana
+
+- name: Provisioning files
+  ansible.builtin.copy:
+    src: "{{ repo_root }}/grafana/provisioning/{{ item }}/"
+    dest: "/etc/grafana/provisioning/{{ item }}/"
+    owner: root
+    group: grafana
+    mode: "0640"
+  loop: [datasources, dashboards]
+  notify: Restart grafana
+
+- name: Dashboards directory
+  ansible.builtin.file:
+    path: "{{ grafana_dashboards_dir }}"
+    state: directory
+    owner: grafana
+    group: grafana
+    mode: "0755"
+
+# Grafana re-reads this folder on its own; no restart needed
+- name: Dashboards
+  ansible.builtin.copy:
+    src: "{{ repo_root }}/grafana/dashboards/"
+    dest: "{{ grafana_dashboards_dir }}/"
+    owner: grafana
+    group: grafana
+    mode: "0644"
+
+- name: Start Grafana
+  ansible.builtin.systemd_service:
+    name: grafana-server
+    state: started
+    enabled: true
+
+- name: Set admin password
+  ansible.builtin.command: grafana-cli admin reset-admin-password {{ grafana_admin_password }}
+  when: grafana_admin_password | length > 0
+  no_log: true
+  changed_when: false

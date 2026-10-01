@@ -1,0 +1,12 @@
+---
+# Reload is enough for config and rule changes and keeps the TSDB head in memory.
+- name: Reload prometheus
+  ansible.builtin.systemd_service:
+    name: prometheus
+    state: reloaded
+
+- name: Restart prometheus
+  ansible.builtin.systemd_service:
+    name: prometheus
+    state: restarted
+    daemon_reload: true

@@ -1,0 +1,14 @@
+{{ ansible_managed | comment }}
+[server]
+listen = {{ alert_dispatcher_listen }}
+log_level = INFO
+alertmanager_url = {{ alert_dispatcher_alertmanager_url }}
+
+[spaces]
+{% for name, url in alert_dispatcher_spaces.items() %}
+{{ name }} = {{ url }}
+{% endfor %}
+
+[heartbeat]
+space = {{ alert_dispatcher_heartbeat_space }}
+max_silence_seconds = {{ alert_dispatcher_max_silence }}

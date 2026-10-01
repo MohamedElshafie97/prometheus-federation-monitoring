@@ -1,0 +1,14 @@
+---
+alert_dispatcher_user: alert-dispatcher
+alert_dispatcher_dir: /opt/alert-dispatcher
+alert_dispatcher_config_dir: /etc/alert-dispatcher
+alert_dispatcher_listen: "127.0.0.1:9095"
+alert_dispatcher_alertmanager_url: "http://{{ inventory_hostname }}:9093"
+alert_dispatcher_heartbeat_space: prod-alerts
+alert_dispatcher_max_silence: 300
+
+# Google Chat webhook URLs. They contain a key and token, so put the real
+# values in vault: ansible-vault edit inventory/group_vars/alerting/vault.yml
+alert_dispatcher_spaces:
+  prod-alerts: "{{ vault_gchat_prod_webhook | default('') }}"
+  nonprod-alerts: "{{ vault_gchat_nonprod_webhook | default('') }}"

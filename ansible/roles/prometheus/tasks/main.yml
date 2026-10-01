@@ -1,0 +1,118 @@
+---
+- name: Check mode and environment are set correctly
+  ansible.builtin.assert:
+    that:
+      - prometheus_mode in ['env', 'global']
+      - prometheus_mode == 'global' or prometheus_env in ['production', 'staging', 'dev']
+    fail_msg: "Set prometheus_mode (env|global) and, for env mode, prometheus_env"
+
+- name: Create prometheus user
+  ansible.builtin.user:
+    name: "{{ prometheus_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+
+- name: Create directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ prometheus_user }}"
+    group: "{{ prometheus_user }}"
+    mode: "0755"
+  loop:
+    - "{{ prometheus_config_dir }}"
+    - "{{ prometheus_config_dir }}/rules"
+    - "{{ prometheus_config_dir }}/rules/alerts"
+    - "{{ prometheus_config_dir }}/targets"
+    - "{{ prometheus_data_dir }}"
+
+- name: Check installed version
+  ansible.builtin.command: /usr/local/bin/prometheus --version
+  register: prometheus_installed
+  changed_when: false
+  failed_when: false
+
+- name: Install Prometheus binaries
+  when: ('version ' ~ prometheus_version) not in (prometheus_installed.stdout | default(''))
+  block:
+    - name: Download and unpack release
+      ansible.builtin.unarchive:
+        src: "{{ prometheus_url }}"
+        dest: /tmp
+        remote_src: true
+
+    - name: Copy prometheus and promtool
+      ansible.builtin.copy:
+        src: "/tmp/{{ prometheus_release }}/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
+        remote_src: true
+        mode: "0755"
+      loop: [prometheus, promtool]
+      notify: Restart prometheus
+
+- name: Deploy recording rules (env servers)
+  ansible.builtin.copy:
+    src: "{{ repo_root }}/prometheus/rules/recording.yml"
+    dest: "{{ prometheus_config_dir }}/rules/recording.yml"
+    owner: "{{ prometheus_user }}"
+    mode: "0644"
+    validate: /usr/local/bin/promtool check rules %s
+  when: prometheus_mode == 'env'
+  notify: Reload prometheus
+  tags: [rules]
+
+- name: Deploy file_sd targets (env servers)
+  ansible.builtin.copy:
+    src: "{{ repo_root }}/prometheus/environments/{{ prometheus_env }}/targets/"
+    dest: "{{ prometheus_config_dir }}/targets/"
+    owner: "{{ prometheus_user }}"
+    mode: "0644"
+  when: prometheus_mode == 'env'
+  tags: [targets]
+
+- name: Deploy alert rules (global server)
+  ansible.builtin.copy:
+    src: "{{ repo_root }}/prometheus/rules/alerts/"
+    dest: "{{ prometheus_config_dir }}/rules/alerts/"
+    owner: "{{ prometheus_user }}"
+    mode: "0644"
+  when: prometheus_mode == 'global'
+  notify: Reload prometheus
+  tags: [rules]
+
+- name: Deploy prometheus.yml
+  ansible.builtin.copy:
+    src: "{{ repo_root }}/prometheus/{{ 'global' if prometheus_mode == 'global' else 'environments/' ~ prometheus_env }}/prometheus.yml"
+    dest: "{{ prometheus_config_dir }}/prometheus.yml"
+    owner: "{{ prometheus_user }}"
+    mode: "0644"
+    validate: /usr/local/bin/promtool check config --syntax-only %s
+  notify: Reload prometheus
+
+- name: Deploy systemd unit
+  ansible.builtin.template:
+    src: prometheus.service.j2
+    dest: /etc/systemd/system/prometheus.service
+    mode: "0644"
+  notify: Restart prometheus
+
+- name: Start Prometheus
+  ansible.builtin.systemd_service:
+    name: prometheus
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Validate full config including rule files
+  ansible.builtin.command: /usr/local/bin/promtool check config {{ prometheus_config_dir }}/prometheus.yml
+  changed_when: false
+  tags: [rules]
+
+- name: Wait until ready
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ prometheus_listen.split(':')[-1] }}/-/ready"
+  register: prometheus_ready
+  retries: 10
+  delay: 3
+  until: prometheus_ready.status == 200

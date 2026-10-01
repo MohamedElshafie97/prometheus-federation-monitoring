@@ -1,0 +1,5 @@
+---
+cadvisor_listen_port: 8080
+cadvisor_url: "https://github.com/google/cadvisor/releases/download/v{{ cadvisor_version }}/cadvisor-v{{ cadvisor_version }}-linux-amd64"
+# Fewer metrics = less load on the docker host and smaller scrapes
+cadvisor_disable_metrics: "advtcp,cpu_topology,cpuset,hugetlb,memory_numa,percpu,process,referenced_memory,resctrl,sched,tcp,udp"

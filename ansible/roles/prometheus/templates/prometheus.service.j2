@@ -1,0 +1,26 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=Prometheus ({{ prometheus_mode }}{{ ' / ' ~ prometheus_env if prometheus_env else '' }})
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User={{ prometheus_user }}
+Group={{ prometheus_user }}
+ExecStart=/usr/local/bin/prometheus \
+    --config.file={{ prometheus_config_dir }}/prometheus.yml \
+    --storage.tsdb.path={{ prometheus_data_dir }} \
+    --storage.tsdb.retention.time={{ prometheus_retention }} \
+    --storage.tsdb.retention.size={{ prometheus_retention_size }} \
+    --web.listen-address={{ prometheus_listen }} \
+    --web.enable-lifecycle
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

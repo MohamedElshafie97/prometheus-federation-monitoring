@@ -1,0 +1,12 @@
+---
+prometheus_mode: env              # env | global
+prometheus_env: ""                # production | staging | dev (env mode only)
+prometheus_user: prometheus
+prometheus_config_dir: /etc/prometheus
+prometheus_data_dir: /var/lib/prometheus
+prometheus_listen: "0.0.0.0:9090"
+prometheus_retention: 15d
+prometheus_retention_size: 100GB
+prometheus_arch: "{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}"
+prometheus_release: "prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}"
+prometheus_url: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/{{ prometheus_release }}.tar.gz"

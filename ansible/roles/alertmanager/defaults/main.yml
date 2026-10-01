@@ -1,0 +1,11 @@
+---
+alertmanager_user: alertmanager
+alertmanager_config_dir: /etc/alertmanager
+alertmanager_data_dir: /var/lib/alertmanager
+alertmanager_listen: "0.0.0.0:9093"
+alertmanager_external_url: "http://{{ inventory_hostname }}:9093"
+alertmanager_arch: "{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}"
+alertmanager_release: "alertmanager-{{ alertmanager_version }}.linux-{{ alertmanager_arch }}"
+alertmanager_url: "https://github.com/prometheus/alertmanager/releases/download/v{{ alertmanager_version }}/{{ alertmanager_release }}.tar.gz"
+# Keep in vault
+alertmanager_smtp_password: ""

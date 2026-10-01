@@ -1,0 +1,11 @@
+---
+profile: production
+exclude_paths:
+  - .github/
+  - prometheus/
+  - alertmanager/
+  - grafana/
+  - kubernetes/
+  - tests/
+skip_list:
+  - var-naming[no-role-prefix]

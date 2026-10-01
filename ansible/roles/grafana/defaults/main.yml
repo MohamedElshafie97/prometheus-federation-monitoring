@@ -1,0 +1,4 @@
+---
+grafana_admin_password: "{{ vault_grafana_admin_password | default('') }}"
+grafana_root_url: "http://{{ inventory_hostname }}:3000"
+grafana_dashboards_dir: /var/lib/grafana/dashboards/platform

@@ -1,0 +1,4 @@
+---
+prometheus_mode: env
+prometheus_retention: 15d
+prometheus_retention_size: 100GB
