@@ -1,0 +1,52 @@
+rule_files:
+  - ../../prometheus/rules/alerts/mysql.yml
+
+evaluation_interval: 30s
+
+tests:
+  - name: sql thread stops on DR replica
+    interval: 30s
+    input_series:
+      - series: 'instance:mysql_replica_io_running:bool{instance="db-dr01:9104", env="production", mysql_role="replica"}'
+        values: '1x10'
+      - series: 'instance:mysql_replica_sql_running:bool{instance="db-dr01:9104", env="production", mysql_role="replica"}'
+        values: '1 1 0 0 0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: MySQLReplicationStopped
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: MySQLReplicationStopped
+        exp_alerts:
+          - exp_labels: {severity: critical, instance: "db-dr01:9104", env: production, mysql_role: replica}
+            exp_annotations:
+              summary: "Replication thread stopped on db-dr01:9104"
+              description: >-
+                Run SHOW SLAVE STATUS\G and check Last_IO_Error / Last_SQL_Error.
+                Do not skip transactions on a GTID replica without knowing what
+                the failed statement was.
+              runbook: docs/runbook.md#mysqlreplicationstopped
+
+  - name: lag warning then critical
+    interval: 1m
+    input_series:
+      - series: 'instance:mysql_replica_lag:seconds{instance="db-prod02:9104", env="production"}'
+        values: '0 0 120 120 120 120 120 120 900 900 900 900 900 900 900'
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: MySQLReplicationLag
+        exp_alerts:
+          - exp_labels: {severity: warning, instance: "db-prod02:9104", env: production}
+            exp_annotations:
+              summary: "db-prod02:9104 is 2m 0s behind its source"
+      - eval_time: 8m
+        alertname: MySQLReplicationLagCritical
+        exp_alerts: []
+      - eval_time: 14m
+        alertname: MySQLReplicationLagCritical
+        exp_alerts:
+          - exp_labels: {severity: critical, instance: "db-prod02:9104", env: production}
+            exp_annotations:
+              summary: "db-prod02:9104 is 15m 0s behind its source"
+              description: A failover now would lose this much data.
+              runbook: docs/runbook.md#mysqlreplicationstopped

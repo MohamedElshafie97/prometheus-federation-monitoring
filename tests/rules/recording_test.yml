@@ -1,0 +1,67 @@
+rule_files:
+  - ../../prometheus/rules/recording.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: cpu, memory and filesystem ratios
+    interval: 1m
+    input_series:
+      # 2 CPUs, each idle 25% of the time -> 75% utilisation
+      - series: 'node_cpu_seconds_total{instance="a:9100", job="node", cpu="0", mode="idle"}'
+        values: '0+15x10'
+      - series: 'node_cpu_seconds_total{instance="a:9100", job="node", cpu="1", mode="idle"}'
+        values: '0+15x10'
+      - series: 'node_memory_MemAvailable_bytes{instance="a:9100", job="node"}'
+        values: '2e9x10'
+      - series: 'node_memory_MemTotal_bytes{instance="a:9100", job="node"}'
+        values: '8e9x10'
+      - series: 'node_filesystem_avail_bytes{instance="a:9100", job="node", device="/dev/sda1", mountpoint="/", fstype="xfs"}'
+        values: '25x10'
+      - series: 'node_filesystem_size_bytes{instance="a:9100", job="node", device="/dev/sda1", mountpoint="/", fstype="xfs"}'
+        values: '100x10'
+      - series: 'node_filesystem_avail_bytes{instance="a:9100", job="node", device="tmpfs", mountpoint="/run", fstype="tmpfs"}'
+        values: '1x10'
+      - series: 'node_filesystem_size_bytes{instance="a:9100", job="node", device="tmpfs", mountpoint="/run", fstype="tmpfs"}'
+        values: '100x10'
+      - series: 'node_load1{instance="a:9100", job="node"}'
+        values: '4x10'
+    promql_expr_test:
+      - expr: instance:node_cpu_utilisation:ratio_rate5m
+        eval_time: 10m
+        exp_samples:
+          - labels: 'instance:node_cpu_utilisation:ratio_rate5m{instance="a:9100", job="node"}'
+            value: 0.75
+      - expr: instance:node_memory_utilisation:ratio
+        eval_time: 10m
+        exp_samples:
+          - labels: 'instance:node_memory_utilisation:ratio{instance="a:9100", job="node"}'
+            value: 0.75
+      - expr: instance:node_filesystem_avail:ratio
+        eval_time: 10m
+        exp_samples:
+          - labels: 'instance:node_filesystem_avail:ratio{instance="a:9100", job="node", device="/dev/sda1", mountpoint="/", fstype="xfs"}'
+            value: 0.25
+      - expr: instance:node_load1_per_cpu:ratio
+        eval_time: 10m
+        exp_samples:
+          - labels: 'instance:node_load1_per_cpu:ratio{instance="a:9100", job="node"}'
+            value: 2
+
+  - name: container memory ratio ignores containers without a limit
+    interval: 1m
+    input_series:
+      - series: 'container_memory_working_set_bytes{instance="d:8080", name="web"}'
+        values: '512x5'
+      - series: 'container_spec_memory_limit_bytes{instance="d:8080", name="web"}'
+        values: '1024x5'
+      - series: 'container_memory_working_set_bytes{instance="d:8080", name="batch"}'
+        values: '512x5'
+      - series: 'container_spec_memory_limit_bytes{instance="d:8080", name="batch"}'
+        values: '0x5'
+    promql_expr_test:
+      - expr: container:memory_working_set:ratio_limit
+        eval_time: 5m
+        exp_samples:
+          - labels: 'container:memory_working_set:ratio_limit{instance="d:8080", name="web"}'
+            value: 0.5

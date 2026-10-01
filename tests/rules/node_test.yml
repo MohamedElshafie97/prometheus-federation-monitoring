@@ -1,0 +1,80 @@
+# yamllint disable rule:line-length
+rule_files:
+  - ../../prometheus/rules/alerts/node.yml
+
+evaluation_interval: 30s
+
+tests:
+  - name: host down only after 3 minutes
+    interval: 30s
+    input_series:
+      - series: 'up{job="node", instance="app-prod01:9100", env="production"}'
+        values: '1 1 0 0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: HostDown
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: HostDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: node
+              instance: app-prod01:9100
+              env: production
+            exp_annotations:
+              summary: "app-prod01:9100 is down (production)"
+              description: node_exporter unreachable for 3 minutes. Host is down, the exporter stopped, or the network path is broken.
+              runbook: docs/runbook.md#hostdown
+
+  - name: disk warning vs critical
+    interval: 1m
+    input_series:
+      - series: 'instance:node_filesystem_avail:ratio{instance="db-prod01:9100", env="production", device="/dev/sdb1", mountpoint="/var/lib/mysql", fstype="xfs"}'
+        values: '0.12x10'
+      - series: 'instance:node_filesystem_avail:ratio{instance="db-prod02:9100", env="production", device="/dev/sdb1", mountpoint="/var/lib/mysql", fstype="xfs"}'
+        values: '0.03x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: HostDiskSpaceLow
+        exp_alerts:
+          - exp_labels:
+              {severity: warning, instance: "db-prod01:9100", env: production, device: /dev/sdb1, mountpoint: /var/lib/mysql, fstype: xfs}
+            exp_annotations:
+              summary: "/var/lib/mysql on db-prod01:9100 has 12% free"
+              runbook: docs/runbook.md#hostdiskspace
+          - exp_labels:
+              {severity: warning, instance: "db-prod02:9100", env: production, device: /dev/sdb1, mountpoint: /var/lib/mysql, fstype: xfs}
+            exp_annotations:
+              summary: "/var/lib/mysql on db-prod02:9100 has 3% free"
+              runbook: docs/runbook.md#hostdiskspace
+      - eval_time: 6m
+        alertname: HostDiskSpaceCritical
+        exp_alerts:
+          - exp_labels:
+              {severity: critical, instance: "db-prod02:9100", env: production, device: /dev/sdb1, mountpoint: /var/lib/mysql, fstype: xfs}
+            exp_annotations:
+              summary: "/var/lib/mysql on db-prod02:9100 almost full (3% free)"
+              runbook: docs/runbook.md#hostdiskspace
+
+  - name: fill prediction needs both conditions
+    interval: 1m
+    input_series:
+      # plenty of space but trending to zero -> no alert (ratio above 40%)
+      - series: 'instance:node_filesystem_avail_bytes:predict_linear4h{instance="app-prod01:9100", env="production", device="/dev/sda1", mountpoint="/"}'
+        values: '-100x40'
+      - series: 'instance:node_filesystem_avail:ratio{instance="app-prod01:9100", env="production", device="/dev/sda1", mountpoint="/"}'
+        values: '0.60x40'
+      # low and trending to zero -> alert
+      - series: 'instance:node_filesystem_avail_bytes:predict_linear4h{instance="app-prod02:9100", env="production", device="/dev/sda1", mountpoint="/"}'
+        values: '-100x40'
+      - series: 'instance:node_filesystem_avail:ratio{instance="app-prod02:9100", env="production", device="/dev/sda1", mountpoint="/"}'
+        values: '0.30x40'
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: HostDiskWillFillIn4Hours
+        exp_alerts:
+          - exp_labels: {severity: warning, instance: "app-prod02:9100", env: production, device: /dev/sda1, mountpoint: /}
+            exp_annotations:
+              summary: "/ on app-prod02:9100 will fill within 4 hours at the current rate"
+              runbook: docs/runbook.md#hostdiskspace

@@ -1,0 +1,29 @@
+rule_files:
+  - ../../prometheus/rules/alerts/kubernetes.yml
+  - ../../prometheus/rules/alerts/containers.yml
+
+evaluation_interval: 30s
+
+tests:
+  - name: crashloop and container near limit
+    interval: 1m
+    input_series:
+      - series: 'namespace_pod:kube_pod_container_restarts:increase1h{namespace="payments", pod="api-7d9f-x2k", env="production", cluster="k8s-prod"}'
+        values: '0 2 5 6 7 8 9 10'
+      - series: 'container:memory_working_set:ratio_limit{instance="docker-prod01:8080", name="redis", env="production"}'
+        values: '0.95x15'
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: KubePodCrashLooping
+        exp_alerts:
+          - exp_labels: {severity: warning, namespace: payments, pod: api-7d9f-x2k, env: production, cluster: k8s-prod}
+            exp_annotations:
+              summary: "payments/api-7d9f-x2k restarted 10 times in the last hour"
+              description: "kubectl -n payments logs api-7d9f-x2k --previous"
+      - eval_time: 12m
+        alertname: ContainerMemoryNearLimit
+        exp_alerts:
+          - exp_labels: {severity: warning, instance: "docker-prod01:8080", name: redis, env: production}
+            exp_annotations:
+              summary: "redis on docker-prod01:8080 at 95% of its memory limit"
+              description: It will be OOM-killed if it keeps growing.

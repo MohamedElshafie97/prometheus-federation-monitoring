@@ -1,0 +1,43 @@
+rule_files:
+  - ../../prometheus/rules/alerts/meta.yml
+
+evaluation_interval: 30s
+
+tests:
+  - name: staging federation lost
+    interval: 30s
+    input_series:
+      - series: 'up{job="federate-staging", instance="prom-stg01:9090", env="staging"}'
+        values: '1 1 0 0 0 0 0 0 0 0'
+      - series: 'up{job="federate-production", instance="prom-prod01:9090", env="production"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 4m30s
+        alertname: FederationTargetDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: federate-staging, instance: "prom-stg01:9090", env: staging}
+            exp_annotations:
+              summary: "Global Prometheus can't federate from prom-stg01:9090 (staging)"
+              description: >-
+                No data from this environment Prometheus for 3 minutes. Alerts for
+                staging are blind until it's back. Check the host, the
+                prometheus service, and the firewall between the two.
+              runbook: docs/runbook.md#federationtargetdown
+
+  - name: federation up but environment returns nothing
+    interval: 30s
+    input_series:
+      - series: 'up{job="federate-dev", instance="prom-dev01:9090", env="dev"}'
+        values: '1x20'
+      - series: 'up{job="federate-production", instance="prom-prod01:9090", env="production"}'
+        values: '1x20'
+      - series: 'up{job="node", instance="app-prod01:9100", env="production"}'
+        values: '1x20'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: EnvironmentNoData
+        exp_alerts:
+          - exp_labels: {severity: critical, env: dev}
+            exp_annotations:
+              summary: "Federation from dev is up but returns no target data"
+              description: Check the env Prometheus targets page and its external_labels.
