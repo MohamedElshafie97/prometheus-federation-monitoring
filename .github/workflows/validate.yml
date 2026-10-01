@@ -63,7 +63,15 @@ jobs:
         run: |
           cp dispatcher/dispatcher.ini.example /tmp/dispatcher.ini
           sed -i 's/^listen = .*/listen = 0.0.0.0:9095/' /tmp/dispatcher.ini
-          docker run -d --name d -p 9095:9095 --read-only \
-            -v /tmp/dispatcher.ini:/etc/alert-dispatcher/dispatcher.ini:ro alert-dispatcher:ci
-          for i in $(seq 1 10); do curl -fs localhost:9095/healthz && exit 0; sleep 1; done
-          docker logs d; exit 1
+          chmod 0644 /tmp/dispatcher.ini
+          if ! out=$(docker run -d --name d -p 127.0.0.1:19095:9095 --read-only \
+                -v /tmp/dispatcher.ini:/etc/alert-dispatcher/dispatcher.ini:ro alert-dispatcher:ci 2>&1); then
+            echo "::error title=docker run::${out//$'\n'/ }"
+            exit 1
+          fi
+          for i in $(seq 1 15); do
+            curl -fs 127.0.0.1:19095/healthz && exit 0
+            sleep 1
+          done
+          echo "::error title=no healthz::$(docker logs d 2>&1 | tail -5 | tr '\n' ' ')"
+          exit 1
